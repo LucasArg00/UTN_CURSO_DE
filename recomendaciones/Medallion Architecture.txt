@@ -1,0 +1,38 @@
+Why Medallion Architecture is Used
+
+1. It provides a structured approach to progressively improve data quality through multiple stages of processing.
+2. Adapts to changing business needs and can handle large volumes of data from various sources.
+3. Enhances data lineage tracking and compliance management.
+4. Helps in building a unified view of enterprise data.
+
+Layers of Medallion Architecture
+
+Bronze Layer (Raw Data)
+
+- Purpose: Initial data ingestion and storage
+
+- Characteristics:
+ - Data stored in its original, unprocessed format
+ - May include various data types (logs, unstructured data, streaming data)
+ - Typically uses scalable storage solutions (HDFS, Amazon S3, Azure Blob Storage)
+ - Preserves entire data history
+
+Silver Layer (Validated Data)
+
+- Purpose: Data cleansing, filtering, and light transformations
+
+- Characteristics:
+ - Data undergoes initial processing and structuring
+ - Organized into tables with defined schemas
+ - May integrate data from multiple sources
+ - Often stored in data lakes or managed storage solutions like Delta Lake
+
+Gold Layer (Enriched Data)
+
+- Purpose: Advanced transformations and aggregations for specific business needs
+
+- Characteristics:
+ - Data is highly refined and optimized for analytics
+ - Structured for fast query performance and high concurrency
+ - Often stored in data warehouses or high-performance databases
+ - Ready for consumption by BI tools, machine learning models, and applications

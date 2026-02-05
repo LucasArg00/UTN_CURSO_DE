@@ -1,0 +1,55 @@
+# Data Lake - Generated data and runtime artifacts
+datalake/
+*.parquet
+*.snappy
+*.zstd
+_delta_log/
+
+# Metadata & State - Runtime tracking files
+metadata_*.json
+*.state
+data/state/
+pipeline_state.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+env/
+.env
+.env.local
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Course Materials (local reference only)
+contexto/
+
+# Claude internal files
+CLAUDE.md
+
+# Generated Outputs
+*.csv
+reports/
+outputs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
