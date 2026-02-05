@@ -29,6 +29,7 @@ env/
 
 # Course Materials (local reference only)
 contexto/
+cosas_a_mejorar.txt
 
 # Claude internal files
 CLAUDE.md
