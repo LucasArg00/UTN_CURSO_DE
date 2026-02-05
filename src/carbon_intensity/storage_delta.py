@@ -10,18 +10,9 @@ import pandas as pd
 import pyarrow as pa
 from deltalake import write_deltalake, DeltaTable
 from deltalake.exceptions import TableNotFoundError
-from typing import Optional, List, Union
-from pathlib import Path
 
 
-def save_data_as_delta(
-    df: pd.DataFrame,
-    path: Union[str, Path],
-    storage_options: Optional[dict] = None,
-    mode: str = "overwrite",
-    partition_cols: Optional[List[str]] = None,
-    description: Optional[str] = None
-) -> None:
+def save_data_as_delta(df, path, storage_options=None, mode="overwrite", partition_cols=None, description=None):
     """
     Guarda un dataframe en formato Delta Lake en la ruta especificada.
 
@@ -37,11 +28,7 @@ def save_data_as_delta(
         print(f"Guardando {len(df)} registros en {path} (modo: {mode})")
 
         write_deltalake(
-            path,
-            df,
-            mode=mode,
-            storage_options=storage_options,
-            partition_by=partition_cols,
+            path, df, mode=mode, storage_options=storage_options, partition_by=partition_cols,
             description=description
         )
 
@@ -57,13 +44,7 @@ def save_data_as_delta(
         raise
 
 
-def save_new_data_as_delta(
-    new_data: pd.DataFrame,
-    data_path: Union[str, Path],
-    predicate: str,
-    storage_options: Optional[dict] = None,
-    partition_cols: Optional[List[str]] = None
-) -> None:
+def save_new_data_as_delta(new_data, data_path, predicate, storage_options, partition_cols=None):
     """
     Guarda solo nuevos datos en formato Delta Lake usando la operación MERGE,
     evitando duplicados al comparar con datos ya existentes.
@@ -112,12 +93,7 @@ def save_new_data_as_delta(
         raise
 
 
-def read_delta_table(
-    path: Union[str, Path],
-    storage_options: Optional[dict] = None,
-    columns: Optional[List[str]] = None,
-    filters: Optional[List] = None
-) -> pd.DataFrame:
+def read_delta_table(path, storage_options=None, columns=None, filters=None):
     """
     Lee una tabla Delta Lake y devuelve un DataFrame.
 
@@ -149,7 +125,7 @@ def read_delta_table(
         raise
 
 
-def table_exists(path: Union[str, Path], storage_options: Optional[dict] = None) -> bool:
+def table_exists(path, storage_options=None):
     """
     Verifica si existe una tabla Delta Lake en la ruta especificada.
 
@@ -169,7 +145,7 @@ def table_exists(path: Union[str, Path], storage_options: Optional[dict] = None)
         return False
 
 
-def get_table_schema(path: Union[str, Path], storage_options: Optional[dict] = None) -> dict:
+def get_table_schema(path, storage_options=None):
     """
     Obtiene el esquema de una tabla Delta Lake.
 
@@ -198,12 +174,7 @@ def get_table_schema(path: Union[str, Path], storage_options: Optional[dict] = N
         raise
 
 
-def add_table_constraint(
-    path: Union[str, Path],
-    constraint_name: str,
-    constraint_expr: str,
-    storage_options: Optional[dict] = None
-) -> None:
+def add_table_constraint(path, constraint_name, constraint_expr, storage_options=None):
     """
     Agrega una restricción (constraint) a una tabla Delta Lake.
 
@@ -227,7 +198,7 @@ def add_table_constraint(
             raise
 
 
-def get_table_stats(path: Union[str, Path], storage_options: Optional[dict] = None) -> dict:
+def get_table_stats(path, storage_options=None):
     """
     Obtiene estadísticas básicas de una tabla Delta Lake.
 

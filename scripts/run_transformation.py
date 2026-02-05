@@ -22,7 +22,7 @@ from src.carbon_intensity import (
 def transform_carbon_intensity_data():
     """Transforma datos de intensidad de carbono de Bronze a Silver"""
     print("="*60)
-    print("TRANSFORMACIÓN INCREMENTAL BRONZE → SILVER")
+    print("TRANSFORMACION INCREMENTAL BRONZE -> SILVER")
     print("="*60)
 
     try:
@@ -139,7 +139,7 @@ def transform_carbon_intensity_data():
         print("\nSUCCESS: TRANSFORMACIÓN INCREMENTAL COMPLETADA EXITOSAMENTE!")
         print(f"  Registros transformados: {len(df_enriched)}")
         print(f"  Último timestamp procesado: {max_timestamp}")
-        print(f"  Rango temporal: {df_enriched['from_time'].min()} → {df_enriched['from_time'].max()}")
+        print(f"  Rango temporal: {df_enriched['from_time'].min()} -> {df_enriched['from_time'].max()}")
 
         return True
 

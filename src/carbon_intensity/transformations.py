@@ -187,7 +187,7 @@ def read_unprocessed_data_from_bronze(
 
         if len(df_new) > 0:
             print(f"    Registros nuevos encontrados: {len(df_new)}")
-            print(f"    Rango: {df_new[timestamp_col].min()} → {df_new[timestamp_col].max()}")
+            print(f"    Rango: {df_new[timestamp_col].min()} -> {df_new[timestamp_col].max()}")
         else:
             print(f"    No hay datos nuevos para procesar")
 
@@ -287,7 +287,7 @@ def validate_transformation_results(
     if 'from_time' in df.columns:
         min_date = df['from_time'].min()
         max_date = df['from_time'].max()
-        print(f"    INFO: Rango temporal: {min_date} → {max_date}")
+        print(f"    INFO: Rango temporal: {min_date} -> {max_date}")
 
     print(f"    SUCCESS: Validación completada exitosamente")
     print(f"    Registros válidos: {len(df)}")
