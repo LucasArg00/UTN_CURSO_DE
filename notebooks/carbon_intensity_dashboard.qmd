@@ -41,6 +41,7 @@ daily['dominant_index'] = pd.Categorical(
 )
 daily = daily.sort_values('fecha')
 weekly = weekly.sort_values('year_week')
+weekly['week_date'] = pd.to_datetime(weekly['year_week'] + '-1', format='%G-W%V-%u')
 
 INDEX_COLORS = {
     'very low': '#1a7a4a',
@@ -65,7 +66,7 @@ weekly_plot['rolling_avg'] = weekly_plot['green_hours_pct'].rolling(4, min_perio
 fig = go.Figure()
 
 fig.add_trace(go.Scatter(
-    x=weekly_plot['year_week'],
+    x=weekly_plot['week_date'],
     y=weekly_plot['green_hours_pct'],
     mode='lines+markers',
     name='Green hours %',
@@ -75,7 +76,7 @@ fig.add_trace(go.Scatter(
 ))
 
 fig.add_trace(go.Scatter(
-    x=weekly_plot['year_week'],
+    x=weekly_plot['week_date'],
     y=weekly_plot['rolling_avg'],
     mode='lines',
     name='4-week rolling avg',
@@ -83,7 +84,7 @@ fig.add_trace(go.Scatter(
 ))
 
 fig.update_layout(
-    xaxis_title='ISO Week',
+    xaxis=dict(title='Week', tickformat='%b %d'),
     yaxis_title='Green Hours (%)',
     yaxis=dict(range=[0, 100]),
     legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
@@ -97,35 +98,79 @@ fig.show()
 
 Daily MAE (Mean Absolute Error) between forecast and actual intensity.
 Darker cells indicate days where the forecast was less accurate.
+Grey cells indicate days with no available data.
 
 ```{python}
+import numpy as np
+
 cal = daily[['fecha', 'mae']].copy()
 cal['dow'] = cal['fecha'].dt.dayofweek        # 0=Mon ... 6=Sun
 cal['week_str'] = cal['fecha'].dt.strftime('%Y-W%V')
 
-# Build pivot: weeks on y-axis, days of week on x-axis
 pivot = cal.pivot_table(index='week_str', columns='dow', values='mae', aggfunc='first')
 pivot = pivot.sort_index()
 
 day_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-# Ensure all 7 columns present
 for d in range(7):
     if d not in pivot.columns:
         pivot[d] = float('nan')
 pivot = pivot[[0, 1, 2, 3, 4, 5, 6]]
 
+# Readable y-axis labels: Monday of each ISO week
+week_labels = [
+    pd.to_datetime(w + '-1', format='%G-W%V-%u').strftime('%b %d')
+    for w in pivot.index
+]
+
+z = pivot.values.astype(float)
+nan_mask = np.isnan(z)
+data_min = float(np.nanmin(z))
+data_max = float(np.nanmax(z))
+
+sentinel = data_min - (data_max - data_min) * 0.15
+z_filled = z.copy()
+z_filled[nan_mask] = sentinel
+
+gap = (data_min - sentinel) / (data_max - sentinel)
+
+colorscale = [
+    [0.0, '#cccccc'],
+    [gap, '#cccccc'],
+    [gap, '#ffffb2'],
+    [1.0, '#800026'],
+]
+
+hover_text = [
+    [
+        f'Week of {week_labels[i]}<br>Day: {day_labels[j]}<br>No data'
+        if nan_mask[i, j] else
+        f'Week of {week_labels[i]}<br>Day: {day_labels[j]}<br>MAE: {z[i, j]:.1f}'
+        for j in range(z.shape[1])
+    ]
+    for i in range(z.shape[0])
+]
+
+tick_vals = np.linspace(data_min, data_max, 5).tolist()
+
 fig = go.Figure(go.Heatmap(
-    z=pivot.values,
+    z=z_filled,
     x=day_labels,
-    y=pivot.index.tolist(),
-    colorscale='YlOrRd',
-    colorbar=dict(title='MAE'),
-    hovertemplate='Week: %{y}<br>Day: %{x}<br>MAE: %{z:.1f}<extra></extra>',
+    y=week_labels,
+    colorscale=colorscale,
+    zmin=sentinel,
+    zmax=data_max,
+    colorbar=dict(
+        title='MAE',
+        tickvals=tick_vals,
+        ticktext=[f'{v:.0f}' for v in tick_vals],
+    ),
+    text=hover_text,
+    hovertemplate='%{text}<extra></extra>',
 ))
 
 fig.update_layout(
     xaxis_title='Day of Week',
-    yaxis_title='ISO Week',
+    yaxis_title='Week of',
     height=max(300, len(pivot) * 18),
     yaxis=dict(autorange='reversed'),
 )
@@ -268,7 +313,7 @@ area_colors = ['#1a7a4a', '#5cb85c', '#f0ad4e', '#d9534f', '#8b0000']
 fig = go.Figure()
 for col, label, color in zip(area_cols, area_labels, area_colors):
     fig.add_trace(go.Scatter(
-        x=weekly['year_week'],
+        x=weekly['week_date'],
         y=weekly[col],
         name=label,
         mode='lines',
@@ -279,7 +324,7 @@ for col, label, color in zip(area_cols, area_labels, area_colors):
     ))
 
 fig.update_layout(
-    xaxis_title='ISO Week',
+    xaxis=dict(title='Week', tickformat='%b %d'),
     yaxis_title='Share of Periods (%)',
     yaxis=dict(range=[0, 100]),
     legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
