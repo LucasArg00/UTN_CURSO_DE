@@ -10,6 +10,7 @@ Módulos:
 - state_manager: Gestión de estado para procesamiento incremental
 - storage_delta: Operaciones Delta Lake
 - transformations: Limpieza de datos e ingeniería de características
+- gold_aggregations: Agregaciones pandas para la capa Gold
 """
 
 __version__ = "1.0.0"

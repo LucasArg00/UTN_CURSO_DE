@@ -27,6 +27,11 @@ env/
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
+# Quarto generated outputs
+notebooks/*.html
+notebooks/.quarto/
+_site/
+
 # Course Materials (local reference only)
 contexto/
 cosas_a_mejorar.txt

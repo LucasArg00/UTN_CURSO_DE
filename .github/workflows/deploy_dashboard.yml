@@ -1,0 +1,90 @@
+name: Deploy Dashboard
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt plotly
+
+      - name: Initialize state file
+        run: |
+          python - <<'EOF'
+          import json
+          from datetime import datetime, timezone, timedelta
+
+          start = (datetime.now(timezone.utc) - timedelta(days=13)).strftime('%Y-%m-%dT%H:%MZ')
+          state = {
+              "half_hour_carbon_intensity": {
+                  "extraction": {
+                      "incremental_column": "from",
+                      "last_value": start
+                  },
+                  "transformation": {
+                      "incremental_column": "from_time",
+                      "last_processed_timestamp": start
+                  }
+              }
+          }
+          with open('metadata_carbon_intensity_final_report.json', 'w') as f:
+              json.dump(state, f, indent=4)
+          print(f"State file initialized with start date: {start}")
+          EOF
+
+      - name: Extract (API -> Bronze)
+        run: python scripts/run_extraction.py
+
+      - name: Transform (Bronze -> Silver)
+        run: python scripts/run_transformation.py
+
+      - name: Build Gold tables
+        run: python scripts/run_gold.py
+
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Render dashboard
+        run: quarto render notebooks/carbon_intensity_dashboard.qmd
+
+      - name: Prepare Pages artifact
+        run: |
+          mkdir -p _site
+          cp notebooks/carbon_intensity_dashboard.html _site/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

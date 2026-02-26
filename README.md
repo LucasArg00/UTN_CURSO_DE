@@ -6,6 +6,18 @@ El pipeline consume la API pública de intensidad de carbono del Reino Unido (Na
 
 ---
 
+## Dashboard interactivo
+
+El dashboard se publica automáticamente en GitHub Pages en cada push a `main`:
+`https://<usuario>.github.io/<repositorio>/`
+
+Incluye 6 visualizaciones Plotly construidas sobre las tablas Gold:
+tendencia semanal de energía verde, calendario de precisión del forecast,
+intensidad por periodo del día, distribución de error por categoría,
+scatter forecast vs actual, y composición del grid en el tiempo.
+
+---
+
 ## Arquitectura
 
 El pipeline sigue el patrón Medallion con tres capas:
@@ -20,7 +32,7 @@ API (carbonintensity.org.uk)
    [Silver Layer]  -- Datos limpios, validados y enriquecidos
         |
         v
-   [Gold Layer]    -- (Pendiente de implementación)
+   [Gold Layer]    -- Tablas analíticas agregadas (diario, periodo, semanal)
 ```
 
 Tanto la extracción como la transformación son **incrementales y stateful**: cada ejecución procesa solo los datos nuevos desde la última vez que corrió el pipeline.
@@ -33,15 +45,23 @@ Tanto la extracción como la transformación son **incrementales y stateful**: c
 .
 ├── scripts/
 │   ├── run_extraction.py       # Extrae datos de la API y los guarda en Bronze
-│   └── run_transformation.py   # Transforma datos de Bronze a Silver
+│   ├── run_transformation.py   # Transforma datos de Bronze a Silver
+│   └── run_gold.py             # Construye las tablas analíticas Gold desde Silver
 │
 ├── src/
 │   └── carbon_intensity/
 │       ├── api_client.py       # Llamadas a la API (factores estáticos y datos temporales)
 │       ├── config.py           # Rutas, endpoints y constantes de negocio
+│       ├── gold_aggregations.py # Funciones de agregación pandas para Gold
 │       ├── state_manager.py    # Lectura y escritura del estado del pipeline
 │       ├── storage_delta.py    # Operaciones sobre tablas Delta Lake
 │       └── transformations.py  # Limpieza, enriquecimiento y validación de datos
+│
+├── notebooks/
+│   └── carbon_intensity_dashboard.qmd  # Dashboard Quarto con 6 visualizaciones Plotly
+│
+├── .github/workflows/
+│   └── deploy_dashboard.yml    # CI/CD: extracción -> transformación -> Gold -> Pages
 │
 ├── recomendaciones/
 │   └── Medallion Architecture.txt  # Descripción de la arquitectura implementada
@@ -70,6 +90,12 @@ Gestiona el archivo de estado `metadata_carbon_intensity_final_report.json`. Per
 ### `src/carbon_intensity/storage_delta.py`
 Abstrae las operaciones de Delta Lake: crear o sobreescribir tablas, hacer MERGE para inserciones incrementales sin duplicados, leer tablas, agregar constraints de calidad, obtener estadísticas, y ejecutar COMPACT y VACUUM.
 
+### `src/carbon_intensity/gold_aggregations.py`
+Funciones puras pandas para construir las tres tablas Gold desde Silver:
+- `build_daily_metrics()`: una fila por día con MAE, MAPE, percentiles y dominant_index.
+- `build_period_efficiency()`: una fila por (periodo del día × weekday/weekend) con volatilidad y % alta intensidad.
+- `build_sustainability_reports()`: una fila por semana ISO con distribución de índices y green_hours_pct.
+
 ### `src/carbon_intensity/transformations.py`
 Implementa las transformaciones Bronze -> Silver:
 - Renombrado de columnas
@@ -94,7 +120,7 @@ source .venv/bin/activate        # Linux/Mac
 pip install -r requirements.txt
 ```
 
-Las dependencias principales son: `requests`, `pandas`, `pyarrow`, `deltalake`.
+Las dependencias principales son: `requests`, `pandas`, `pyarrow`, `deltalake`, `plotly`.
 
 ---
 
@@ -147,13 +173,44 @@ Lee solo los datos no procesados de Bronze (desde el último timestamp transform
 
 > Debe ejecutarse después de `run_extraction.py`. El script valida que Bronze exista y termina con error si no es así.
 
+### 3. Gold (Silver -> tablas analíticas)
+
+```bash
+python scripts/run_gold.py
+```
+
+Construye las tres tablas Gold en `datalake/gold/` con full refresh (overwrite).
+No requiere estado: agrega todos los datos de Silver en cada ejecución.
+
 ### Orden de ejecución
 
 ```
-run_extraction.py  -->  run_transformation.py
+run_extraction.py  -->  run_transformation.py  -->  run_gold.py
 ```
 
-Ambos scripts son idempotentes: se pueden re-ejecutar sin duplicar datos.
+Los tres scripts son idempotentes: se pueden re-ejecutar sin duplicar datos.
+
+---
+
+## Dashboard
+
+El dashboard se genera a partir de las tablas Gold con Quarto y Plotly.
+
+### Renderizar localmente
+
+Con Quarto instalado:
+
+```bash
+quarto render notebooks/carbon_intensity_dashboard.qmd
+# Genera: notebooks/carbon_intensity_dashboard.html
+```
+
+### Deploy automático
+
+GitHub Actions ejecuta el pipeline completo (extracción -> transformación -> Gold -> render)
+en cada push a `main` y publica el resultado en GitHub Pages.
+
+Para habilitarlo: ir a **Settings → Pages → Source** y seleccionar **GitHub Actions**.
 
 ---
 

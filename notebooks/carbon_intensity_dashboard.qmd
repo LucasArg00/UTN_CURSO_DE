@@ -1,0 +1,290 @@
+---
+title: "UK Carbon Intensity Dashboard"
+author: "Lucas Diedrich"
+format:
+  html:
+    self-contained: true
+    theme: cosmo
+    toc: true
+execute:
+  echo: false
+  warning: false
+---
+
+```{python}
+import os
+import sys
+from pathlib import Path
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+
+# Quarto runs from notebooks/ — move to project root so relative paths in config.py work
+project_root = Path.cwd().parent
+os.chdir(project_root)
+sys.path.insert(0, str(project_root))
+
+from src.carbon_intensity import config
+from src.carbon_intensity.storage_delta import read_delta_table
+
+daily = read_delta_table(config.GOLD_DAILY_METRICS_PATH)
+period = read_delta_table(config.GOLD_PERIOD_EFFICIENCY_PATH)
+weekly = read_delta_table(config.GOLD_SUSTAINABILITY_REPORTS_PATH)
+
+# Ensure consistent types
+daily['fecha'] = pd.to_datetime(daily['fecha'])
+daily['dominant_index'] = pd.Categorical(
+    daily['dominant_index'],
+    categories=['very low', 'low', 'moderate', 'high', 'very high'],
+    ordered=True
+)
+daily = daily.sort_values('fecha')
+weekly = weekly.sort_values('year_week')
+
+INDEX_COLORS = {
+    'very low': '#1a7a4a',
+    'low': '#5cb85c',
+    'moderate': '#f0ad4e',
+    'high': '#d9534f',
+    'very high': '#8b0000',
+}
+```
+
+## Weekly Green Energy Trend
+
+Percentage of half-hour periods classified as **very low** or **low** intensity each week.
+A rising trend indicates the grid is getting cleaner.
+
+```{python}
+weekly_plot = weekly.copy()
+
+# 4-week rolling average
+weekly_plot['rolling_avg'] = weekly_plot['green_hours_pct'].rolling(4, min_periods=1).mean()
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=weekly_plot['year_week'],
+    y=weekly_plot['green_hours_pct'],
+    mode='lines+markers',
+    name='Green hours %',
+    line=dict(color='#5cb85c', width=1.5),
+    marker=dict(size=4),
+    opacity=0.6,
+))
+
+fig.add_trace(go.Scatter(
+    x=weekly_plot['year_week'],
+    y=weekly_plot['rolling_avg'],
+    mode='lines',
+    name='4-week rolling avg',
+    line=dict(color='#1a7a4a', width=2.5),
+))
+
+fig.update_layout(
+    xaxis_title='ISO Week',
+    yaxis_title='Green Hours (%)',
+    yaxis=dict(range=[0, 100]),
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    hovermode='x unified',
+    height=380,
+)
+fig.show()
+```
+
+## Forecast Accuracy Calendar
+
+Daily MAE (Mean Absolute Error) between forecast and actual intensity.
+Darker cells indicate days where the forecast was less accurate.
+
+```{python}
+cal = daily[['fecha', 'mae']].copy()
+cal['dow'] = cal['fecha'].dt.dayofweek        # 0=Mon ... 6=Sun
+cal['week_str'] = cal['fecha'].dt.strftime('%Y-W%V')
+
+# Build pivot: weeks on y-axis, days of week on x-axis
+pivot = cal.pivot_table(index='week_str', columns='dow', values='mae', aggfunc='first')
+pivot = pivot.sort_index()
+
+day_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+# Ensure all 7 columns present
+for d in range(7):
+    if d not in pivot.columns:
+        pivot[d] = float('nan')
+pivot = pivot[[0, 1, 2, 3, 4, 5, 6]]
+
+fig = go.Figure(go.Heatmap(
+    z=pivot.values,
+    x=day_labels,
+    y=pivot.index.tolist(),
+    colorscale='YlOrRd',
+    colorbar=dict(title='MAE'),
+    hovertemplate='Week: %{y}<br>Day: %{x}<br>MAE: %{z:.1f}<extra></extra>',
+))
+
+fig.update_layout(
+    xaxis_title='Day of Week',
+    yaxis_title='ISO Week',
+    height=max(300, len(pivot) * 18),
+    yaxis=dict(autorange='reversed'),
+)
+fig.show()
+```
+
+## Carbon Intensity by Period
+
+Average actual intensity and forecast error (MAPE) for each combination of
+time-of-day period and weekday/weekend.
+
+```{python}
+period_plot = period.copy()
+period_plot['is_weekend_label'] = period_plot['is_weekend'].map({True: 'Weekend', False: 'Weekday'})
+
+period_order = ['morning', 'afternoon', 'night']
+
+pivot_actual = period_plot.pivot_table(
+    index='is_weekend_label', columns='period_of_day', values='avg_actual'
+)[period_order]
+
+pivot_mape = period_plot.pivot_table(
+    index='is_weekend_label', columns='period_of_day', values='mape'
+)[period_order]
+
+annotations = []
+for i, row in enumerate(pivot_actual.index):
+    for j, col in enumerate(period_order):
+        val_actual = pivot_actual.loc[row, col]
+        val_mape = pivot_mape.loc[row, col]
+        annotations.append(dict(
+            x=j, y=i,
+            text=f"MAPE: {val_mape:.1f}%",
+            showarrow=False,
+            font=dict(color='white', size=11),
+            xref='x', yref='y',
+        ))
+
+fig = go.Figure(go.Heatmap(
+    z=pivot_actual.values,
+    x=period_order,
+    y=pivot_actual.index.tolist(),
+    colorscale='RdYlGn_r',
+    colorbar=dict(title='Avg Actual<br>(gCO2/kWh)'),
+    hovertemplate='%{y} / %{x}<br>Avg Actual: %{z:.1f} gCO2/kWh<extra></extra>',
+))
+
+fig.update_layout(
+    xaxis_title='Period of Day',
+    yaxis_title='',
+    annotations=annotations,
+    height=280,
+)
+fig.show()
+```
+
+## Forecast Accuracy Distribution by Intensity Level
+
+How does forecast error (MAE) vary across intensity categories?
+High-intensity days tend to have larger absolute errors.
+
+```{python}
+index_order = ['very low', 'low', 'moderate', 'high', 'very high']
+daily_box = daily.dropna(subset=['dominant_index', 'mae'])
+
+fig = go.Figure()
+for idx in index_order:
+    subset = daily_box[daily_box['dominant_index'] == idx]['mae']
+    fig.add_trace(go.Box(
+        y=subset,
+        name=idx,
+        marker_color=INDEX_COLORS.get(idx, '#888'),
+        boxpoints='outliers',
+        jitter=0.3,
+    ))
+
+fig.update_layout(
+    xaxis_title='Dominant Intensity Index',
+    yaxis_title='MAE (gCO2/kWh)',
+    showlegend=False,
+    height=380,
+)
+fig.show()
+```
+
+## Forecast vs Actual
+
+Does the model over- or under-predict at different intensity levels?
+Points on the diagonal line represent perfect predictions.
+
+```{python}
+scatter_df = daily.dropna(subset=['avg_actual', 'avg_forecast', 'dominant_index'])
+
+fig = go.Figure()
+
+for idx in index_order:
+    subset = scatter_df[scatter_df['dominant_index'] == idx]
+    fig.add_trace(go.Scatter(
+        x=subset['avg_actual'],
+        y=subset['avg_forecast'],
+        mode='markers',
+        name=idx,
+        marker=dict(color=INDEX_COLORS.get(idx, '#888'), size=7, opacity=0.8),
+        hovertemplate=(
+            f'Index: {idx}<br>'
+            'Actual: %{x:.1f}<br>'
+            'Forecast: %{y:.1f}<extra></extra>'
+        ),
+    ))
+
+# Perfect prediction line
+all_vals = pd.concat([scatter_df['avg_actual'], scatter_df['avg_forecast']])
+lo, hi = all_vals.min(), all_vals.max()
+fig.add_trace(go.Scatter(
+    x=[lo, hi], y=[lo, hi],
+    mode='lines',
+    name='Perfect prediction',
+    line=dict(color='black', dash='dash', width=1.5),
+))
+
+fig.update_layout(
+    xaxis_title='Avg Actual (gCO2/kWh)',
+    yaxis_title='Avg Forecast (gCO2/kWh)',
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    height=420,
+)
+fig.show()
+```
+
+## Grid Composition Over Time
+
+Weekly share of each intensity category. A shift toward green (bottom) indicates
+the grid is running cleaner.
+
+```{python}
+area_cols = ['pct_very_low', 'pct_low', 'pct_moderate', 'pct_high', 'pct_very_high']
+area_labels = ['Very Low', 'Low', 'Moderate', 'High', 'Very High']
+area_colors = ['#1a7a4a', '#5cb85c', '#f0ad4e', '#d9534f', '#8b0000']
+
+fig = go.Figure()
+for col, label, color in zip(area_cols, area_labels, area_colors):
+    fig.add_trace(go.Scatter(
+        x=weekly['year_week'],
+        y=weekly[col],
+        name=label,
+        mode='lines',
+        stackgroup='one',
+        line=dict(width=0.5, color=color),
+        fillcolor=color,
+        hovertemplate=f'{label}: %{{y:.1f}}%<extra></extra>',
+    ))
+
+fig.update_layout(
+    xaxis_title='ISO Week',
+    yaxis_title='Share of Periods (%)',
+    yaxis=dict(range=[0, 100]),
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    hovermode='x unified',
+    height=400,
+)
+fig.show()
+```
