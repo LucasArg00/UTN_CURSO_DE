@@ -1,17 +1,26 @@
 ---
 title: "UK Carbon Intensity Dashboard"
+subtitle: "Analysis of UK National Grid carbon intensity data"
 author: "Lucas Diedrich"
+date: today
+date-format: "MMMM D, YYYY"
 format:
   html:
-    self-contained: true
-    theme: cosmo
+    embed-resources: true
+    theme: flatly
     toc: true
+    toc-title: "Contents"
+    css: dashboard.css
+    include-in-header:
+      text: |
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='15' fill='%231a7a4a'/><text y='.9em' font-size='70' x='15'>⚡</text></svg>">
 execute:
   echo: false
   warning: false
 ---
 
 ```{python}
+#| output: false
 import os
 import sys
 from pathlib import Path

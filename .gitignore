@@ -38,6 +38,8 @@ cosas_a_mejorar.txt
 
 # Claude internal files
 CLAUDE.md
+.claude/
+.playwright-cli/
 
 # Generated Outputs
 *.csv

@@ -1,0 +1,24 @@
+/* Header */
+.quarto-title-meta { margin-top: 0.5rem; }
+
+.quarto-title-block {
+  padding: 2rem 0 1.5rem;
+  border-bottom: 3px solid #1a7a4a;
+  margin-bottom: 2rem;
+}
+
+h1.title { color: #1a3a2a; }
+p.subtitle { color: #4a7a5a; font-size: 1.05rem; }
+
+/* Sections */
+h2 {
+  color: #1a3a2a;
+  border-bottom: 1px solid #d4e8da;
+  padding-bottom: 0.4rem;
+  margin-top: 2.5rem;
+}
+
+/* TOC */
+#TOC { border-left: 3px solid #1a7a4a; padding-left: 1rem; }
+#TOC a { color: #2d6a4f; }
+#TOC a:hover { color: #1a7a4a; }
