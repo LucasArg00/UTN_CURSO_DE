@@ -9,7 +9,7 @@ El pipeline consume la API pública de intensidad de carbono del Reino Unido (Na
 ## Dashboard interactivo
 
 El dashboard se publica automáticamente en GitHub Pages en cada push a `main`:
-`https://<usuario>.github.io/<repositorio>/`
+https://lucasarg00.github.io/UTN_CURSO_DE/
 
 Incluye 6 visualizaciones Plotly construidas sobre las tablas Gold:
 tendencia semanal de energía verde, calendario de precisión del forecast,
@@ -209,8 +209,6 @@ quarto render notebooks/carbon_intensity_dashboard.qmd
 
 GitHub Actions ejecuta el pipeline completo (extracción -> transformación -> Gold -> render)
 en cada push a `main` y publica el resultado en GitHub Pages.
-
-Para habilitarlo: ir a **Settings → Pages → Source** y seleccionar **GitHub Actions**.
 
 ---
 
