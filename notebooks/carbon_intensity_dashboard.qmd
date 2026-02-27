@@ -61,10 +61,59 @@ INDEX_COLORS = {
 }
 ```
 
+The UK electricity grid's carbon intensity — measured in grams of CO₂ per
+kilowatt-hour (gCO₂/kWh) — varies continuously depending on which energy sources
+are generating power at any given moment. Renewables like wind and solar push the
+value down; gas and coal push it up. The UK National Grid publishes both a
+real-time measurement and a rolling **forecast** for every 30-minute period.
+
+This dashboard analyses that data across three dimensions: how **clean** the grid
+is, how **predictable** it is, and when — during the day and week — intensity
+peaks or dips.
+
+## Grid Composition Over Time
+
+Each band shows what fraction of 30-minute periods in that week fell into each
+carbon intensity category — the bands sum to 100%. A growing green base
+(**very low** + **low**) signals a cleaner grid, typically driven by high renewable
+output. Winter weeks tend to have a wider orange/red band due to higher heating
+demand and less solar availability.
+
+```{python}
+area_cols = ['pct_very_low', 'pct_low', 'pct_moderate', 'pct_high', 'pct_very_high']
+area_labels = ['Very Low', 'Low', 'Moderate', 'High', 'Very High']
+area_colors = ['#1a7a4a', '#5cb85c', '#f0ad4e', '#d9534f', '#8b0000']
+
+fig = go.Figure()
+for col, label, color in zip(area_cols, area_labels, area_colors):
+    fig.add_trace(go.Scatter(
+        x=weekly['week_date'],
+        y=weekly[col],
+        name=label,
+        mode='lines',
+        stackgroup='one',
+        line=dict(width=0.5, color=color),
+        fillcolor=color,
+        hovertemplate=f'{label}: %{{y:.1f}}%<extra></extra>',
+    ))
+
+fig.update_layout(
+    xaxis=dict(title='Week', tickformat='%b %d'),
+    yaxis_title='Share of Periods (%)',
+    yaxis=dict(range=[0, 100]),
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    hovermode='x unified',
+    height=400,
+)
+fig.show()
+```
+
 ## Weekly Green Energy Trend
 
-Percentage of half-hour periods classified as **very low** or **low** intensity each week.
-A rising trend indicates the grid is getting cleaner.
+"Green hours" counts the share of 30-minute slots where intensity fell into the
+**very low** or **low** categories (roughly below 100 gCO₂/kWh). The 4-week
+rolling average smooths out week-to-week noise caused by weather variability,
+making the underlying structural trend easier to read.
 
 ```{python}
 weekly_plot = weekly.copy()
@@ -103,11 +152,114 @@ fig.update_layout(
 fig.show()
 ```
 
+## Daily Intensity Range
+
+Each day's carbon intensity does not stay constant — it fluctuates across the
+48 half-hour periods. This chart shows that spread: the dark line is the daily
+average, the **inner band** covers the interquartile range (p25–p75, where 50% of
+readings fell), and the **outer band** extends to the daily minimum and maximum.
+A wide band indicates a volatile day where intensity swung significantly, often
+caused by variable wind output or large demand shifts.
+
+```{python}
+daily_r = daily.dropna(subset=['min_actual', 'max_actual', 'p25_actual', 'p75_actual', 'avg_actual'])
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=daily_r['fecha'], y=daily_r['max_actual'],
+    mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip',
+))
+fig.add_trace(go.Scatter(
+    x=daily_r['fecha'], y=daily_r['min_actual'],
+    mode='lines', line=dict(width=0),
+    fill='tonexty', fillcolor='rgba(92,184,92,0.12)',
+    name='Range (min-max)', hoverinfo='skip',
+))
+fig.add_trace(go.Scatter(
+    x=daily_r['fecha'], y=daily_r['p75_actual'],
+    mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip',
+))
+fig.add_trace(go.Scatter(
+    x=daily_r['fecha'], y=daily_r['p25_actual'],
+    mode='lines', line=dict(width=0),
+    fill='tonexty', fillcolor='rgba(26,122,74,0.25)',
+    name='IQR (p25-p75)', hoverinfo='skip',
+))
+fig.add_trace(go.Scatter(
+    x=daily_r['fecha'], y=daily_r['avg_actual'],
+    mode='lines', name='Daily average',
+    line=dict(color='#1a7a4a', width=2),
+    hovertemplate='%{x|%b %d}<br>Avg: %{y:.1f} gCO2/kWh<extra></extra>',
+))
+
+fig.update_layout(
+    xaxis=dict(title='Date', tickformat='%b %d'),
+    yaxis_title='Carbon Intensity (gCO2/kWh)',
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    hovermode='x unified',
+    height=380,
+)
+fig.show()
+```
+
+## Forecast vs Actual
+
+Each point is one day: its x-position is the average **actual** intensity and its
+y-position is the average **forecast**. Points on the dashed diagonal represent
+perfect predictions. Points **above** the line mean the forecast overestimated
+(predicted a dirtier grid than reality); points **below** mean it underestimated.
+A systematic tilt in one direction across a whole intensity category reveals
+structural bias in the forecasting model for that regime.
+
+```{python}
+index_order = ['very low', 'low', 'moderate', 'high', 'very high']
+scatter_df = daily.dropna(subset=['avg_actual', 'avg_forecast', 'dominant_index'])
+
+fig = go.Figure()
+
+for idx in index_order:
+    subset = scatter_df[scatter_df['dominant_index'] == idx]
+    fig.add_trace(go.Scatter(
+        x=subset['avg_actual'],
+        y=subset['avg_forecast'],
+        mode='markers',
+        name=idx,
+        marker=dict(color=INDEX_COLORS.get(idx, '#888'), size=7, opacity=0.8),
+        hovertemplate=(
+            f'Index: {idx}<br>'
+            'Actual: %{x:.1f}<br>'
+            'Forecast: %{y:.1f}<extra></extra>'
+        ),
+    ))
+
+# Perfect prediction line
+all_vals = pd.concat([scatter_df['avg_actual'], scatter_df['avg_forecast']])
+lo, hi = all_vals.min(), all_vals.max()
+fig.add_trace(go.Scatter(
+    x=[lo, hi], y=[lo, hi],
+    mode='lines',
+    name='Perfect prediction',
+    line=dict(color='black', dash='dash', width=1.5),
+))
+
+fig.update_layout(
+    xaxis_title='Avg Actual (gCO2/kWh)',
+    yaxis_title='Avg Forecast (gCO2/kWh)',
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    height=420,
+)
+fig.show()
+```
+
 ## Forecast Accuracy Calendar
 
-Daily MAE (Mean Absolute Error) between forecast and actual intensity.
-Darker cells indicate days where the forecast was less accurate.
-Grey cells indicate days with no available data.
+**MAE** (Mean Absolute Error) measures the average absolute difference between
+forecast and actual values across all 30-minute periods in a day, in gCO₂/kWh.
+An MAE of 10 means the forecast was off by ~10 gCO₂/kWh on average that day.
+Darker cells — higher MAE — tend to cluster around weather events, unexpected
+demand changes, or periods of rapid renewable ramp-up or ramp-down.
+Grey cells indicate days with no data in the dataset.
 
 ```{python}
 import numpy as np
@@ -186,10 +338,82 @@ fig.update_layout(
 fig.show()
 ```
 
+## Forecast Accuracy Distribution by Intensity Level
+
+Each box shows the distribution of daily MAE values for days where a given
+intensity category was dominant. High-intensity days rely more on gas and coal
+dispatch, which is less predictable than wind and solar — hence the larger errors.
+The height of the box indicates consistency: a tall box means forecast accuracy
+itself was variable on those days, not just poor on average.
+
+```{python}
+index_order = ['very low', 'low', 'moderate', 'high', 'very high']
+daily_box = daily.dropna(subset=['dominant_index', 'mae'])
+
+fig = go.Figure()
+for idx in index_order:
+    subset = daily_box[daily_box['dominant_index'] == idx]['mae']
+    fig.add_trace(go.Box(
+        y=subset,
+        name=idx,
+        marker_color=INDEX_COLORS.get(idx, '#888'),
+        boxpoints='outliers',
+        jitter=0.3,
+    ))
+
+fig.update_layout(
+    xaxis_title='Dominant Intensity Index',
+    yaxis_title='MAE (gCO2/kWh)',
+    showlegend=False,
+    height=380,
+)
+fig.show()
+```
+
+## Weekly Forecast Accuracy
+
+**MAE** and **MAPE** (Mean Absolute Percentage Error) at weekly resolution show
+whether forecasting quality is stable or drifting over time. MAPE normalizes error
+as a percentage of the actual value, making it comparable across weeks with
+different average intensity levels: a week with high MAE but low MAPE likely had
+a high-intensity baseline; a week with low MAE but high MAPE suggests the grid
+was clean but still hard to predict.
+
+```{python}
+fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+fig.add_trace(go.Scatter(
+    x=weekly['week_date'], y=weekly['mae'],
+    mode='lines+markers', name='MAE (gCO2/kWh)',
+    line=dict(color='#d9534f', width=2), marker=dict(size=5),
+), secondary_y=False)
+
+fig.add_trace(go.Scatter(
+    x=weekly['week_date'], y=weekly['mape'],
+    mode='lines+markers', name='MAPE (%)',
+    line=dict(color='#f0ad4e', width=2, dash='dot'), marker=dict(size=5),
+), secondary_y=True)
+
+fig.update_layout(
+    xaxis=dict(title='Week', tickformat='%b %d'),
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    hovermode='x unified',
+    height=360,
+)
+fig.update_yaxes(title_text='MAE (gCO2/kWh)', secondary_y=False)
+fig.update_yaxes(title_text='MAPE (%)', secondary_y=True)
+fig.show()
+```
+
 ## Carbon Intensity by Period
 
-Average actual intensity and forecast error (MAPE) for each combination of
-time-of-day period and weekday/weekend.
+The color shows average **actual** carbon intensity (gCO₂/kWh) for each
+combination of time-of-day and day type. Periods are defined as: morning
+(06:00–12:00), afternoon (12:00–19:00), and night (19:00–06:00).
+The annotation inside each cell shows **MAPE** — the average forecast percentage
+error for that segment. Weekday/weekend separation matters because demand patterns
+differ substantially: office heating, industrial load, and commuting all shift
+the grid's generation mix.
 
 ```{python}
 period_plot = period.copy()
@@ -236,109 +460,49 @@ fig.update_layout(
 fig.show()
 ```
 
-## Forecast Accuracy Distribution by Intensity Level
+## Period Volatility
 
-How does forecast error (MAE) vary across intensity categories?
-High-intensity days tend to have larger absolute errors.
-
-```{python}
-index_order = ['very low', 'low', 'moderate', 'high', 'very high']
-daily_box = daily.dropna(subset=['dominant_index', 'mae'])
-
-fig = go.Figure()
-for idx in index_order:
-    subset = daily_box[daily_box['dominant_index'] == idx]['mae']
-    fig.add_trace(go.Box(
-        y=subset,
-        name=idx,
-        marker_color=INDEX_COLORS.get(idx, '#888'),
-        boxpoints='outliers',
-        jitter=0.3,
-    ))
-
-fig.update_layout(
-    xaxis_title='Dominant Intensity Index',
-    yaxis_title='MAE (gCO2/kWh)',
-    showlegend=False,
-    height=380,
-)
-fig.show()
-```
-
-## Forecast vs Actual
-
-Does the model over- or under-predict at different intensity levels?
-Points on the diagonal line represent perfect predictions.
+**Volatility** is the average standard deviation of carbon intensity readings
+within each period-day-type segment — a high value means intensity fluctuated
+significantly during that time window, typical when renewable output is unstable.
+**% high intensity** counts the share of readings classified as 'high' or 'very
+high', a proxy for how often that period forces the grid to dispatch expensive,
+high-emission peaking plants.
 
 ```{python}
-scatter_df = daily.dropna(subset=['avg_actual', 'avg_forecast', 'dominant_index'])
+period_v = period.copy()
+period_v['is_weekend_label'] = period_v['is_weekend'].map({True: 'Weekend', False: 'Weekday'})
+period_v['label'] = period_v['period_of_day'].str.capitalize() + ' / ' + period_v['is_weekend_label']
 
-fig = go.Figure()
+label_order = [
+    'Morning / Weekday', 'Morning / Weekend',
+    'Afternoon / Weekday', 'Afternoon / Weekend',
+    'Night / Weekday', 'Night / Weekend',
+]
+period_v['label'] = pd.Categorical(period_v['label'], categories=label_order, ordered=True)
+period_v = period_v.sort_values('label')
 
-for idx in index_order:
-    subset = scatter_df[scatter_df['dominant_index'] == idx]
-    fig.add_trace(go.Scatter(
-        x=subset['avg_actual'],
-        y=subset['avg_forecast'],
-        mode='markers',
-        name=idx,
-        marker=dict(color=INDEX_COLORS.get(idx, '#888'), size=7, opacity=0.8),
-        hovertemplate=(
-            f'Index: {idx}<br>'
-            'Actual: %{x:.1f}<br>'
-            'Forecast: %{y:.1f}<extra></extra>'
-        ),
-    ))
+fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-# Perfect prediction line
-all_vals = pd.concat([scatter_df['avg_actual'], scatter_df['avg_forecast']])
-lo, hi = all_vals.min(), all_vals.max()
+fig.add_trace(go.Bar(
+    x=period_v['label'], y=period_v['avg_volatility'],
+    name='Avg Volatility (gCO2/kWh)',
+    marker_color='#5cb85c', opacity=0.8,
+), secondary_y=False)
+
 fig.add_trace(go.Scatter(
-    x=[lo, hi], y=[lo, hi],
-    mode='lines',
-    name='Perfect prediction',
-    line=dict(color='black', dash='dash', width=1.5),
-))
+    x=period_v['label'], y=period_v['pct_high_intensity'],
+    mode='lines+markers', name='% High Intensity',
+    line=dict(color='#d9534f', width=2), marker=dict(size=8),
+), secondary_y=True)
 
 fig.update_layout(
-    xaxis_title='Avg Actual (gCO2/kWh)',
-    yaxis_title='Avg Forecast (gCO2/kWh)',
+    xaxis_title='Period / Day type',
     legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-    height=420,
+    height=360,
+    bargap=0.3,
 )
-fig.show()
-```
-
-## Grid Composition Over Time
-
-Weekly share of each intensity category. A shift toward green (bottom) indicates
-the grid is running cleaner.
-
-```{python}
-area_cols = ['pct_very_low', 'pct_low', 'pct_moderate', 'pct_high', 'pct_very_high']
-area_labels = ['Very Low', 'Low', 'Moderate', 'High', 'Very High']
-area_colors = ['#1a7a4a', '#5cb85c', '#f0ad4e', '#d9534f', '#8b0000']
-
-fig = go.Figure()
-for col, label, color in zip(area_cols, area_labels, area_colors):
-    fig.add_trace(go.Scatter(
-        x=weekly['week_date'],
-        y=weekly[col],
-        name=label,
-        mode='lines',
-        stackgroup='one',
-        line=dict(width=0.5, color=color),
-        fillcolor=color,
-        hovertemplate=f'{label}: %{{y:.1f}}%<extra></extra>',
-    ))
-
-fig.update_layout(
-    xaxis=dict(title='Week', tickformat='%b %d'),
-    yaxis_title='Share of Periods (%)',
-    yaxis=dict(range=[0, 100]),
-    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-    hovermode='x unified',
-    height=400,
-)
+fig.update_yaxes(title_text='Avg Volatility (gCO2/kWh)', secondary_y=False)
+fig.update_yaxes(title_text='% High Intensity', secondary_y=True)
 fig.show()
 ```
